@@ -8,6 +8,7 @@ description = "Demosaicing algorithms for Bayer and X-Trans CFA sensors"
 repository = "https://github.com/naorunaoru/demosaic"
 keywords = ["demosaic", "bayer", "xtrans", "raw", "image-processing"]
 categories = ["multimedia::images"]
+exclude = [".github/", ".gitignore", "Cargo.lock"]
 
 [features]
 default = ["std"]

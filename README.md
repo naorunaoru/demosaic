@@ -1,5 +1,9 @@
 # demosaic
 
+[![crates.io](https://img.shields.io/crates/v/demosaic.svg)](https://crates.io/crates/demosaic)
+[![docs.rs](https://docs.rs/demosaic/badge.svg)](https://docs.rs/demosaic)
+[![CI](https://github.com/naorunaoru/demosaic/actions/workflows/ci.yml/badge.svg)](https://github.com/naorunaoru/demosaic/actions/workflows/ci.yml)
+
 Demosaicing algorithms for Bayer and X-Trans CFA sensors. Pure Rust, `no_std` compatible. *Not* blazingly fast, just moderately. Use at your own pace. 
 
 ## Algorithms

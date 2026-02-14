@@ -1,9 +1,13 @@
 use core::fmt;
 
+/// Color channel in a CFA pattern.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Channel {
+    /// Red channel.
     Red = 0,
+    /// Green channel.
     Green = 1,
+    /// Blue channel.
     Blue = 2,
 }
 
@@ -94,23 +98,28 @@ impl CfaPattern {
         Self { pattern: shifted, width: self.width, height: self.height }
     }
 
+    /// Return the color channel at the given row and column (wraps modulo pattern size).
     #[inline]
     pub fn color_at(&self, row: usize, col: usize) -> Channel {
         self.pattern[(row % self.height) * self.width + (col % self.width)]
     }
 
+    /// Pattern width: 2 for Bayer, 6 for X-Trans.
     pub fn width(&self) -> usize {
         self.width
     }
 
+    /// Pattern height: 2 for Bayer, 6 for X-Trans.
     pub fn height(&self) -> usize {
         self.height
     }
 
+    /// Returns `true` if this is a 2x2 Bayer pattern.
     pub fn is_bayer(&self) -> bool {
         self.width == 2
     }
 
+    /// Returns `true` if this is a 6x6 X-Trans pattern.
     pub fn is_xtrans(&self) -> bool {
         self.width == 6
     }

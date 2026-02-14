@@ -1,15 +1,36 @@
 use core::fmt;
 
+/// Errors returned by demosaicing operations.
 #[derive(Debug)]
 pub enum DemosaicError {
-    /// Input buffer length doesn't match width * height
-    InputSizeMismatch { expected: usize, got: usize },
-    /// Output buffer length doesn't match 3 * width * height
-    OutputSizeMismatch { expected: usize, got: usize },
-    /// Algorithm not supported for this CFA pattern
-    UnsupportedAlgorithm { algorithm: &'static str, cfa: &'static str },
-    /// Image too small for the chosen algorithm
-    ImageTooSmall { min_width: usize, min_height: usize },
+    /// Input buffer length doesn't match width * height.
+    InputSizeMismatch {
+        /// Expected number of elements.
+        expected: usize,
+        /// Actual number of elements.
+        got: usize,
+    },
+    /// Output buffer length doesn't match 3 * width * height.
+    OutputSizeMismatch {
+        /// Expected number of elements.
+        expected: usize,
+        /// Actual number of elements.
+        got: usize,
+    },
+    /// Algorithm not supported for this CFA pattern.
+    UnsupportedAlgorithm {
+        /// Name of the algorithm.
+        algorithm: &'static str,
+        /// CFA type (e.g. "Bayer", "X-Trans").
+        cfa: &'static str,
+    },
+    /// Image too small for the chosen algorithm.
+    ImageTooSmall {
+        /// Minimum required width.
+        min_width: usize,
+        /// Minimum required height.
+        min_height: usize,
+    },
 }
 
 impl fmt::Display for DemosaicError {
