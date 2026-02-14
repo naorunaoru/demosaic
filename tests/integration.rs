@@ -1,0 +1,218 @@
+use demosaic::{demosaic, Algorithm, CfaPattern, DemosaicError};
+
+/// Helper: create CFA input where each pixel gets a value based on its filter color.
+fn synthetic_input(width: usize, height: usize, cfa: &CfaPattern, rgb: [f32; 3]) -> Vec<f32> {
+    let mut input = vec![0.0f32; width * height];
+    for y in 0..height {
+        for x in 0..width {
+            input[y * width + x] = rgb[cfa.color_at(y, x) as usize];
+        }
+    }
+    input
+}
+
+// ---------------------------------------------------------------------------
+// Solid-color reconstruction: if every R pixel = every G pixel = every B pixel,
+// all algorithms should reconstruct uniform planes (within tolerance).
+// ---------------------------------------------------------------------------
+
+fn assert_solid_reconstruction(
+    algorithm: Algorithm,
+    cfa: &CfaPattern,
+    width: usize,
+    height: usize,
+    tolerance: f32,
+) {
+    let value = 0.5;
+    let input = synthetic_input(width, height, cfa, [value; 3]);
+    let mut output = vec![0.0f32; 3 * width * height];
+
+    demosaic(&input, width, height, cfa, algorithm, &mut output).unwrap();
+
+    let npix = width * height;
+    // Skip a border of 8 pixels to avoid edge effects from algorithms that
+    // don't fully interpolate the border region.
+    let border = 8;
+    for y in border..height.saturating_sub(border) {
+        for x in border..width.saturating_sub(border) {
+            let idx = y * width + x;
+            for c in 0..3 {
+                let v = output[c * npix + idx];
+                assert!(
+                    (v - value).abs() < tolerance,
+                    "{:?} on {:?} CFA: pixel ({y},{x}) channel {c} = {v}, expected ~{value} (tol {tolerance})",
+                    algorithm,
+                    if cfa.is_bayer() { "Bayer" } else { "X-Trans" },
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn solid_bayer_bilinear() {
+    for cfa in &[
+        CfaPattern::bayer_rggb(),
+        CfaPattern::bayer_bggr(),
+        CfaPattern::bayer_grbg(),
+        CfaPattern::bayer_gbrg(),
+    ] {
+        assert_solid_reconstruction(Algorithm::Bilinear, cfa, 64, 64, 1e-6);
+    }
+}
+
+#[test]
+fn solid_bayer_mhc() {
+    assert_solid_reconstruction(Algorithm::Mhc, &CfaPattern::bayer_rggb(), 64, 64, 1e-4);
+}
+
+#[test]
+fn solid_bayer_ppg() {
+    assert_solid_reconstruction(Algorithm::Ppg, &CfaPattern::bayer_rggb(), 64, 64, 1e-4);
+}
+
+#[test]
+fn solid_bayer_ahd() {
+    assert_solid_reconstruction(Algorithm::Ahd, &CfaPattern::bayer_rggb(), 64, 64, 1e-4);
+}
+
+#[test]
+fn solid_xtrans_bilinear() {
+    assert_solid_reconstruction(
+        Algorithm::Bilinear,
+        &CfaPattern::xtrans_default(),
+        64,
+        64,
+        1e-6,
+    );
+}
+
+#[test]
+fn solid_xtrans_markesteijn1() {
+    assert_solid_reconstruction(
+        Algorithm::Markesteijn1,
+        &CfaPattern::xtrans_default(),
+        128,
+        128,
+        1e-2,
+    );
+}
+
+#[test]
+fn solid_xtrans_markesteijn3() {
+    assert_solid_reconstruction(
+        Algorithm::Markesteijn3,
+        &CfaPattern::xtrans_default(),
+        128,
+        128,
+        1e-2,
+    );
+}
+
+#[test]
+fn solid_xtrans_dht() {
+    assert_solid_reconstruction(
+        Algorithm::Dht,
+        &CfaPattern::xtrans_default(),
+        128,
+        128,
+        1e-2,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Color separation: given distinct per-channel values, the output planes
+// should recover them (at least in the interior).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn color_separation_bayer() {
+    let cfa = CfaPattern::bayer_rggb();
+    let (w, h) = (64, 64);
+    let rgb = [0.8, 0.5, 0.2];
+    let input = synthetic_input(w, h, &cfa, rgb);
+    let mut output = vec![0.0f32; 3 * w * h];
+
+    demosaic(&input, w, h, &cfa, Algorithm::Bilinear, &mut output).unwrap();
+
+    let npix = w * h;
+    let border = 4;
+    for y in border..h - border {
+        for x in border..w - border {
+            let idx = y * w + x;
+            for c in 0..3 {
+                let v = output[c * npix + idx];
+                assert!(
+                    (v - rgb[c]).abs() < 1e-4,
+                    "pixel ({y},{x}) channel {c} = {v}, expected {}",
+                    rgb[c]
+                );
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Error conditions
+// ---------------------------------------------------------------------------
+
+#[test]
+fn error_input_size_mismatch() {
+    let cfa = CfaPattern::bayer_rggb();
+    let mut output = vec![0.0f32; 3 * 4 * 4];
+    let result = demosaic(&[0.0; 10], 4, 4, &cfa, Algorithm::Bilinear, &mut output);
+    assert!(matches!(
+        result,
+        Err(DemosaicError::InputSizeMismatch { expected: 16, got: 10 })
+    ));
+}
+
+#[test]
+fn error_output_size_mismatch() {
+    let cfa = CfaPattern::bayer_rggb();
+    let input = vec![0.0f32; 16];
+    let mut output = vec![0.0f32; 10];
+    let result = demosaic(&input, 4, 4, &cfa, Algorithm::Bilinear, &mut output);
+    assert!(matches!(
+        result,
+        Err(DemosaicError::OutputSizeMismatch { expected: 48, got: 10 })
+    ));
+}
+
+#[test]
+fn error_unsupported_algorithm_bayer() {
+    let cfa = CfaPattern::bayer_rggb();
+    let input = vec![0.0f32; 16];
+    let mut output = vec![0.0f32; 48];
+    let result = demosaic(&input, 4, 4, &cfa, Algorithm::Markesteijn1, &mut output);
+    assert!(matches!(
+        result,
+        Err(DemosaicError::UnsupportedAlgorithm { .. })
+    ));
+}
+
+#[test]
+fn error_unsupported_algorithm_xtrans() {
+    let cfa = CfaPattern::xtrans_default();
+    let (w, h) = (64, 64);
+    let input = vec![0.0f32; w * h];
+    let mut output = vec![0.0f32; 3 * w * h];
+    let result = demosaic(&input, w, h, &cfa, Algorithm::Ppg, &mut output);
+    assert!(matches!(
+        result,
+        Err(DemosaicError::UnsupportedAlgorithm { .. })
+    ));
+}
+
+#[test]
+fn error_xtrans_image_too_small() {
+    let cfa = CfaPattern::xtrans_default();
+    let (w, h) = (12, 12);
+    let input = vec![0.0f32; w * h];
+    let mut output = vec![0.0f32; 3 * w * h];
+    let result = demosaic(&input, w, h, &cfa, Algorithm::Markesteijn1, &mut output);
+    assert!(matches!(
+        result,
+        Err(DemosaicError::ImageTooSmall { .. })
+    ));
+}

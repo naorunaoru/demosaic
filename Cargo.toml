@@ -1,0 +1,23 @@
+[package]
+name = "demosaic"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+description = "Demosaicing algorithms for Bayer and X-Trans CFA sensors"
+repository = "https://github.com/naorunaoru/demosaic"
+keywords = ["demosaic", "bayer", "xtrans", "raw", "image-processing"]
+categories = ["multimedia::images"]
+
+[features]
+default = ["std"]
+std = []
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "demosaic"
+harness = false
+
+[dependencies]
