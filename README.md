@@ -30,6 +30,18 @@ demosaic(&input, width, height, &cfa, Algorithm::Ppg, &mut output).unwrap();
 // output is planar CHW: [R plane (w*h), G plane (w*h), B plane (w*h)]
 ```
 
+For interleaved RGB output (`[R,G,B, R,G,B, ...]`), use `demosaic_interleaved`:
+
+```rust
+use demosaic::demosaic_interleaved;
+
+demosaic_interleaved(&input, width, height, &cfa, Algorithm::Ppg, &mut output).unwrap();
+
+// output is interleaved HWC: [R,G,B, R,G,B, ...]
+```
+
+Standalone conversion utilities are also available: `planar_to_interleaved` and `interleaved_to_planar`.
+
 Input and output are `f32` slices. The crate does not handle raw file parsing or color
 space conversion.
 

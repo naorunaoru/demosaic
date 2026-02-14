@@ -1,4 +1,7 @@
-use demosaic::{demosaic, Algorithm, CfaPattern, DemosaicError};
+use demosaic::{
+    demosaic, demosaic_interleaved, interleaved_to_planar, planar_to_interleaved, Algorithm,
+    CfaPattern, DemosaicError,
+};
 
 /// Helper: create CFA input where each pixel gets a value based on its filter color.
 fn synthetic_input(width: usize, height: usize, cfa: &CfaPattern, rgb: [f32; 3]) -> Vec<f32> {
@@ -215,4 +218,76 @@ fn error_xtrans_image_too_small() {
         result,
         Err(DemosaicError::ImageTooSmall { .. })
     ));
+}
+
+// ---------------------------------------------------------------------------
+// Interleaved output
+// ---------------------------------------------------------------------------
+
+#[test]
+fn interleaved_matches_planar_bayer() {
+    let cfa = CfaPattern::bayer_rggb();
+    let (w, h) = (64, 64);
+    let npix = w * h;
+    let input = synthetic_input(w, h, &cfa, [0.8, 0.5, 0.2]);
+
+    let mut planar = vec![0.0f32; 3 * npix];
+    let mut interleaved = vec![0.0f32; 3 * npix];
+
+    demosaic(&input, w, h, &cfa, Algorithm::Bilinear, &mut planar).unwrap();
+    demosaic_interleaved(&input, w, h, &cfa, Algorithm::Bilinear, &mut interleaved).unwrap();
+
+    for i in 0..npix {
+        assert_eq!(interleaved[3 * i], planar[i], "R mismatch at pixel {i}");
+        assert_eq!(interleaved[3 * i + 1], planar[npix + i], "G mismatch at pixel {i}");
+        assert_eq!(interleaved[3 * i + 2], planar[2 * npix + i], "B mismatch at pixel {i}");
+    }
+}
+
+#[test]
+fn interleaved_matches_planar_xtrans() {
+    let cfa = CfaPattern::xtrans_default();
+    let (w, h) = (128, 128);
+    let npix = w * h;
+    let input = synthetic_input(w, h, &cfa, [0.7, 0.5, 0.3]);
+
+    let mut planar = vec![0.0f32; 3 * npix];
+    let mut interleaved = vec![0.0f32; 3 * npix];
+
+    demosaic(&input, w, h, &cfa, Algorithm::Markesteijn1, &mut planar).unwrap();
+    demosaic_interleaved(&input, w, h, &cfa, Algorithm::Markesteijn1, &mut interleaved).unwrap();
+
+    for i in 0..npix {
+        assert_eq!(interleaved[3 * i], planar[i], "R mismatch at pixel {i}");
+        assert_eq!(interleaved[3 * i + 1], planar[npix + i], "G mismatch at pixel {i}");
+        assert_eq!(interleaved[3 * i + 2], planar[2 * npix + i], "B mismatch at pixel {i}");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Layout conversion round-trips
+// ---------------------------------------------------------------------------
+
+#[test]
+fn planar_interleaved_round_trip() {
+    let npix = 100;
+    let mut planar = vec![0.0f32; 3 * npix];
+    for i in 0..3 * npix {
+        planar[i] = i as f32;
+    }
+
+    let mut interleaved = vec![0.0f32; 3 * npix];
+    planar_to_interleaved(&planar, &mut interleaved);
+
+    // Verify interleaved layout.
+    for i in 0..npix {
+        assert_eq!(interleaved[3 * i], i as f32); // R
+        assert_eq!(interleaved[3 * i + 1], (npix + i) as f32); // G
+        assert_eq!(interleaved[3 * i + 2], (2 * npix + i) as f32); // B
+    }
+
+    // Round-trip back to planar.
+    let mut back = vec![0.0f32; 3 * npix];
+    interleaved_to_planar(&interleaved, &mut back);
+    assert_eq!(planar, back);
 }

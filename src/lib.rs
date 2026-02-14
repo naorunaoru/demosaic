@@ -164,3 +164,68 @@ pub fn demosaic(
     Ok(())
 }
 
+/// Demosaic a single-channel CFA image to interleaved 3-channel RGB.
+///
+/// Same as [`demosaic`], but outputs interleaved HWC layout: `[R,G,B, R,G,B, ...]`.
+/// This is the format expected by most image crates (e.g. `image`, `png`).
+///
+/// Internally demosaics to a temporary planar buffer, then scatters into
+/// `output` as interleaved.
+pub fn demosaic_interleaved(
+    input: &[f32],
+    width: usize,
+    height: usize,
+    cfa: &CfaPattern,
+    algorithm: Algorithm,
+    output: &mut [f32],
+) -> Result<(), DemosaicError> {
+    let npix = width * height;
+    let mut planar = alloc::vec![0.0f32; 3 * npix];
+    demosaic(input, width, height, cfa, algorithm, &mut planar)?;
+    planar_to_interleaved(&planar, output);
+    Ok(())
+}
+
+/// Convert planar CHW layout to interleaved HWC between two buffers.
+///
+/// - `planar`: `[R0..Rn, G0..Gn, B0..Bn]`, length = `3 * width * height`
+/// - `interleaved`: `[R0,G0,B0, R1,G1,B1, ...]`, length = `3 * width * height`
+///
+/// # Panics
+///
+/// Panics if `planar` and `interleaved` have different lengths or length is not
+/// divisible by 3.
+pub fn planar_to_interleaved(planar: &[f32], interleaved: &mut [f32]) {
+    let len = planar.len();
+    assert_eq!(len, interleaved.len());
+    assert_eq!(len % 3, 0);
+    let npix = len / 3;
+    for i in 0..npix {
+        interleaved[3 * i] = planar[i];
+        interleaved[3 * i + 1] = planar[npix + i];
+        interleaved[3 * i + 2] = planar[2 * npix + i];
+    }
+}
+
+/// Convert interleaved HWC layout to planar CHW between two buffers.
+///
+/// - `interleaved`: `[R0,G0,B0, R1,G1,B1, ...]`, length = `3 * width * height`
+/// - `planar`: `[R0..Rn, G0..Gn, B0..Bn]`, length = `3 * width * height`
+///
+/// # Panics
+///
+/// Panics if `interleaved` and `planar` have different lengths or length is not
+/// divisible by 3.
+pub fn interleaved_to_planar(interleaved: &[f32], planar: &mut [f32]) {
+    let len = interleaved.len();
+    assert_eq!(len, planar.len());
+    assert_eq!(len % 3, 0);
+    let npix = len / 3;
+    for i in 0..npix {
+        planar[i] = interleaved[3 * i];
+        planar[npix + i] = interleaved[3 * i + 1];
+        planar[2 * npix + i] = interleaved[3 * i + 2];
+    }
+}
+
+
