@@ -24,6 +24,13 @@ pub enum DemosaicError {
         /// CFA type (e.g. "Bayer", "X-Trans").
         cfa: &'static str,
     },
+    /// Input dimensions must be even for this operation.
+    DimensionsNotEven {
+        /// The actual width.
+        width: usize,
+        /// The actual height.
+        height: usize,
+    },
     /// Image too small for the chosen algorithm.
     ImageTooSmall {
         /// Minimum required width.
@@ -44,6 +51,9 @@ impl fmt::Display for DemosaicError {
             }
             Self::UnsupportedAlgorithm { algorithm, cfa } => {
                 write!(f, "algorithm '{algorithm}' not supported for {cfa} CFA")
+            }
+            Self::DimensionsNotEven { width, height } => {
+                write!(f, "dimensions must be even: got {width}x{height}")
             }
             Self::ImageTooSmall { min_width, min_height } => {
                 write!(f, "image too small: minimum {min_width}x{min_height}")

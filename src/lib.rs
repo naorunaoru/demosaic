@@ -1,8 +1,8 @@
-//! Demosaicing algorithms for Bayer and X-Trans CFA sensors.
+//! Demosaicing algorithms for Bayer, Quad Bayer, and X-Trans CFA sensors.
 //!
 //! Takes single-channel CFA (color filter array) sensor data and reconstructs
-//! full-color RGB images. Supports both 2x2 Bayer patterns (RGGB, BGGR, GRBG,
-//! GBRG) and 6x6 Fujifilm X-Trans patterns.
+//! full-color RGB images. Supports 2x2 Bayer patterns (RGGB, BGGR, GRBG,
+//! GBRG), 4x4 Quad Bayer patterns, and 6x6 Fujifilm X-Trans patterns.
 //!
 //! # Algorithms
 //!
@@ -11,6 +11,12 @@
 //! - [`Mhc`](Algorithm::Mhc) — Malvar-He-Cutler gradient-corrected interpolation
 //! - [`Ppg`](Algorithm::Ppg) — Patterned Pixel Grouping
 //! - [`Ahd`](Algorithm::Ahd) — Adaptive Homogeneity-Directed
+//!
+//! **Quad Bayer:**
+//! - [`Bilinear`](Algorithm::Bilinear) — 5x5 neighbor averaging
+//! - [`QuadPpg`](Algorithm::QuadPpg) — gradient-based direct demosaicing
+//! - [`demosaic_quad_binned`] — 2x2 binning + any Bayer algorithm (half resolution)
+//! - [`remosaic`] — convert to standard Bayer, then use any Bayer algorithm
 //!
 //! **X-Trans:**
 //! - [`Bilinear`](Algorithm::Bilinear) — simple neighbor averaging
@@ -45,6 +51,8 @@ extern crate alloc;
 mod cfa;
 mod error;
 mod bayer;
+mod quad_bayer;
+mod remosaic;
 mod xtrans;
 mod lab;
 
@@ -52,6 +60,30 @@ use core::fmt;
 
 pub use cfa::{CfaPattern, Channel};
 pub use error::DemosaicError;
+
+/// Bayer-only demosaicing algorithm, used as inner algorithm for Quad Bayer binning.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum BayerAlgorithm {
+    /// Bilinear interpolation.
+    Bilinear,
+    /// Malvar-He-Cutler gradient-corrected interpolation.
+    Mhc,
+    /// Patterned Pixel Grouping.
+    Ppg,
+    /// Adaptive Homogeneity-Directed.
+    Ahd,
+}
+
+impl fmt::Display for BayerAlgorithm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Bilinear => f.write_str("Bilinear"),
+            Self::Mhc => f.write_str("MHC"),
+            Self::Ppg => f.write_str("PPG"),
+            Self::Ahd => f.write_str("AHD"),
+        }
+    }
+}
 
 /// Demosaicing algorithm selection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -70,6 +102,8 @@ pub enum Algorithm {
     Markesteijn3,
     /// Directional Homogeneity Test (2 directions). X-Trans only.
     Dht,
+    /// Quad-PPG: gradient-based direct demosaicing. Quad Bayer only.
+    QuadPpg,
 }
 
 impl fmt::Display for Algorithm {
@@ -82,6 +116,7 @@ impl fmt::Display for Algorithm {
             Self::Markesteijn1 => f.write_str("Markesteijn (1-pass)"),
             Self::Markesteijn3 => f.write_str("Markesteijn (3-pass)"),
             Self::Dht => f.write_str("DHT"),
+            Self::QuadPpg => f.write_str("Quad-PPG"),
         }
     }
 }
@@ -123,9 +158,29 @@ pub fn demosaic(
                         Algorithm::Markesteijn1 => "Markesteijn1",
                         Algorithm::Markesteijn3 => "Markesteijn3",
                         Algorithm::Dht => "DHT",
+                        Algorithm::QuadPpg => "Quad-PPG",
                         _ => unreachable!(),
                     },
                     cfa: "Bayer",
+                });
+            }
+        }
+    } else if cfa.is_quad_bayer() {
+        match algorithm {
+            Algorithm::Bilinear => quad_bayer::bilinear(input, width, height, cfa, output),
+            Algorithm::QuadPpg => quad_bayer::qppg(input, width, height, cfa, output),
+            _ => {
+                return Err(DemosaicError::UnsupportedAlgorithm {
+                    algorithm: match algorithm {
+                        Algorithm::Mhc => "MHC",
+                        Algorithm::Ppg => "PPG",
+                        Algorithm::Ahd => "AHD",
+                        Algorithm::Markesteijn1 => "Markesteijn1",
+                        Algorithm::Markesteijn3 => "Markesteijn3",
+                        Algorithm::Dht => "DHT",
+                        _ => unreachable!(),
+                    },
+                    cfa: "Quad Bayer",
                 });
             }
         }
@@ -154,6 +209,7 @@ pub fn demosaic(
                         Algorithm::Mhc => "MHC",
                         Algorithm::Ppg => "PPG",
                         Algorithm::Ahd => "AHD",
+                        Algorithm::QuadPpg => "Quad-PPG",
                         _ => unreachable!(),
                     },
                     cfa: "X-Trans",
@@ -229,4 +285,79 @@ pub fn interleaved_to_planar(interleaved: &[f32], planar: &mut [f32]) {
     }
 }
 
+/// 2x2-bin a single-channel image by averaging each 2x2 block of pixels.
+///
+/// Reduces dimensions by half in each axis.
+///
+/// # Arguments
+/// - `input`: row-major single-channel data, length = `width * height`
+/// - `width`, `height`: input dimensions, must both be even
+/// - `output`: pre-allocated buffer, length = `(width / 2) * (height / 2)`
+pub fn bin2x2(
+    input: &[f32],
+    width: usize,
+    height: usize,
+    output: &mut [f32],
+) -> Result<(), DemosaicError> {
+    quad_bayer::binning::bin2x2(input, width, height, output)
+}
 
+/// Demosaic a Quad Bayer CFA image via 2x2 binning + standard Bayer demosaic.
+///
+/// Produces a full-color image at half the input resolution in each dimension.
+///
+/// # Arguments
+/// - `input`: Quad Bayer CFA data, row-major, length = `width * height`
+/// - `width`, `height`: input dimensions (must be even)
+/// - `cfa`: a 4x4 Quad Bayer CFA pattern (e.g. `CfaPattern::quad_bayer_rggb()`)
+/// - `algorithm`: which Bayer demosaic to apply after binning
+/// - `output`: pre-allocated buffer, planar CHW, length = `3 * (width/2) * (height/2)`
+pub fn demosaic_quad_binned(
+    input: &[f32],
+    width: usize,
+    height: usize,
+    cfa: &CfaPattern,
+    algorithm: BayerAlgorithm,
+    output: &mut [f32],
+) -> Result<(), DemosaicError> {
+    quad_bayer::binning::demosaic_quad_binned(input, width, height, cfa, algorithm, output)
+}
+
+/// Demosaic a Quad Bayer CFA image via binning to interleaved RGB output.
+///
+/// Same as [`demosaic_quad_binned`], but outputs interleaved HWC layout.
+pub fn demosaic_quad_binned_interleaved(
+    input: &[f32],
+    width: usize,
+    height: usize,
+    cfa: &CfaPattern,
+    algorithm: BayerAlgorithm,
+    output: &mut [f32],
+) -> Result<(), DemosaicError> {
+    quad_bayer::binning::demosaic_quad_binned_interleaved(input, width, height, cfa, algorithm, output)
+}
+
+/// Convert Quad Bayer raw data to Standard Bayer raw data at the same resolution.
+///
+/// Uses bilinear interpolation for pixels where the Quad Bayer and Standard
+/// Bayer patterns disagree on the color. Pixels where both patterns agree
+/// pass through unchanged.
+///
+/// After remosaicing, `output` contains standard Bayer data that can be passed
+/// to [`demosaic`] with the corresponding standard Bayer [`CfaPattern`]
+/// (obtainable via [`CfaPattern::quad_to_bayer`]).
+///
+/// # Arguments
+/// - `input`: single-channel Quad Bayer CFA data, row-major, length = `width * height`
+/// - `width`, `height`: image dimensions
+/// - `quad_cfa`: the Quad Bayer CFA pattern (4x4)
+/// - `output`: pre-allocated output buffer, length = `width * height`
+pub fn remosaic(
+    input: &[f32],
+    width: usize,
+    height: usize,
+    quad_cfa: &CfaPattern,
+    output: &mut [f32],
+) -> Result<(), DemosaicError> {
+    remosaic::remosaic(input, width, height, quad_cfa, output)
+}
