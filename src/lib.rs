@@ -11,6 +11,7 @@
 //! - [`Mhc`](Algorithm::Mhc) — Malvar-He-Cutler gradient-corrected interpolation
 //! - [`Ppg`](Algorithm::Ppg) — Patterned Pixel Grouping
 //! - [`Ahd`](Algorithm::Ahd) — Adaptive Homogeneity-Directed
+//! - [`Vng`](Algorithm::Vng) — Variable Number of Gradients
 //!
 //! **Quad Bayer:**
 //! - [`Bilinear`](Algorithm::Bilinear) — 5x5 neighbor averaging
@@ -72,6 +73,8 @@ pub enum BayerAlgorithm {
     Ppg,
     /// Adaptive Homogeneity-Directed.
     Ahd,
+    /// Variable Number of Gradients.
+    Vng,
 }
 
 impl fmt::Display for BayerAlgorithm {
@@ -81,6 +84,7 @@ impl fmt::Display for BayerAlgorithm {
             Self::Mhc => f.write_str("MHC"),
             Self::Ppg => f.write_str("PPG"),
             Self::Ahd => f.write_str("AHD"),
+            Self::Vng => f.write_str("VNG"),
         }
     }
 }
@@ -96,6 +100,8 @@ pub enum Algorithm {
     Ppg,
     /// Adaptive Homogeneity-Directed. Bayer only.
     Ahd,
+    /// Variable Number of Gradients. Bayer only.
+    Vng,
     /// Markesteijn 1-pass (4 directions). X-Trans only.
     Markesteijn1,
     /// Markesteijn 3-pass (4 directions + 2 median refinements). X-Trans only.
@@ -113,6 +119,7 @@ impl fmt::Display for Algorithm {
             Self::Mhc => f.write_str("MHC"),
             Self::Ppg => f.write_str("PPG"),
             Self::Ahd => f.write_str("AHD"),
+            Self::Vng => f.write_str("VNG"),
             Self::Markesteijn1 => f.write_str("Markesteijn (1-pass)"),
             Self::Markesteijn3 => f.write_str("Markesteijn (3-pass)"),
             Self::Dht => f.write_str("DHT"),
@@ -152,6 +159,7 @@ pub fn demosaic(
             Algorithm::Mhc => bayer::mhc(input, width, height, cfa, output),
             Algorithm::Ppg => bayer::ppg(input, width, height, cfa, output),
             Algorithm::Ahd => bayer::ahd(input, width, height, cfa, output),
+            Algorithm::Vng => bayer::vng(input, width, height, cfa, output),
             _ => {
                 return Err(DemosaicError::UnsupportedAlgorithm {
                     algorithm: match algorithm {
@@ -175,6 +183,7 @@ pub fn demosaic(
                         Algorithm::Mhc => "MHC",
                         Algorithm::Ppg => "PPG",
                         Algorithm::Ahd => "AHD",
+                        Algorithm::Vng => "VNG",
                         Algorithm::Markesteijn1 => "Markesteijn1",
                         Algorithm::Markesteijn3 => "Markesteijn3",
                         Algorithm::Dht => "DHT",
@@ -209,6 +218,7 @@ pub fn demosaic(
                         Algorithm::Mhc => "MHC",
                         Algorithm::Ppg => "PPG",
                         Algorithm::Ahd => "AHD",
+                        Algorithm::Vng => "VNG",
                         Algorithm::QuadPpg => "Quad-PPG",
                         _ => unreachable!(),
                     },

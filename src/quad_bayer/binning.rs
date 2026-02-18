@@ -104,6 +104,7 @@ pub fn demosaic_quad_binned(
         BayerAlgorithm::Mhc => bayer::mhc(&binned, out_w, out_h, &bayer_cfa, output),
         BayerAlgorithm::Ppg => bayer::ppg(&binned, out_w, out_h, &bayer_cfa, output),
         BayerAlgorithm::Ahd => bayer::ahd(&binned, out_w, out_h, &bayer_cfa, output),
+        BayerAlgorithm::Vng => bayer::vng(&binned, out_w, out_h, &bayer_cfa, output),
     }
 
     Ok(())

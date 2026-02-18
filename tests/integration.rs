@@ -80,6 +80,11 @@ fn solid_bayer_ahd() {
 }
 
 #[test]
+fn solid_bayer_vng() {
+    assert_solid_reconstruction(Algorithm::Vng, &CfaPattern::bayer_rggb(), 64, 64, 1e-4);
+}
+
+#[test]
 fn solid_xtrans_bilinear() {
     assert_solid_reconstruction(
         Algorithm::Bilinear,
@@ -368,6 +373,7 @@ fn solid_quad_bayer_binned() {
             BayerAlgorithm::Mhc,
             BayerAlgorithm::Ppg,
             BayerAlgorithm::Ahd,
+            BayerAlgorithm::Vng,
         ] {
             let mut output = vec![0.0f32; 3 * out_npix];
             demosaic_quad_binned(&input, w, h, cfa, *alg, &mut output).unwrap();

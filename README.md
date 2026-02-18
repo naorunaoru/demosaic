@@ -13,6 +13,7 @@ Demosaicing algorithms for Bayer, Quad Bayer, and X-Trans CFA sensors. Pure Rust
 | Bilinear | x | x | x | Low | Fastest |
 | MHC | x | | | Medium | Fast |
 | PPG | x | | | Medium-high | Medium |
+| VNG | x | | | Medium-high | Medium |
 | AHD | x | | | High | Slow |
 | Quad-PPG | | x | | Medium-high | Medium |
 | Markesteijn (1-pass) | | | x | Medium-high | Medium |
